@@ -40,7 +40,8 @@
     "prepublishOnly": "bun run build && bun test",
     "start": "bun run index.ts",
     "dev": "bun --watch index.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "start:node": "node index.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
@@ -48,5 +49,8 @@
   },
   "peerDependencies": {
     "typescript": "^7"
+  },
+  "engines": {
+    "node": ">=22.18"
   }
 }

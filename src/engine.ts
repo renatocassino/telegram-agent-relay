@@ -31,10 +31,12 @@ export class BridgeEngine {
   private watcherTimer: NodeJS.Timeout | null = null;
   private lastDeliveredId: string | null = null;
 
-  constructor(
-    private config: BridgeConfig,
-    private stateStore: StateStore
-  ) {
+  private config: BridgeConfig;
+  private stateStore: StateStore;
+
+  constructor(config: BridgeConfig, stateStore: StateStore) {
+    this.config = config;
+    this.stateStore = stateStore;
     this.telegram = new TelegramClient(config.botToken);
     this.agentWatcher = new UniversalAgentWatcher();
 
@@ -137,7 +139,7 @@ export class BridgeEngine {
 
   private async handleBuiltinCommand(cmd: string): Promise<boolean> {
     const parts = cmd.split(" ");
-    const command = parts[0].toLowerCase();
+    const command = (parts[0] ?? "").toLowerCase();
 
     switch (command) {
       case "/help":

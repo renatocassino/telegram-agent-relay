@@ -29,7 +29,7 @@ export interface TelegramUser {
 export class TelegramClient {
   private baseUrl: string;
 
-  constructor(private token: string) {
+  constructor(token: string) {
     this.baseUrl = `https://api.telegram.org/bot${token}`;
   }
 

@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "fs";
 import { BridgeEngine, type BridgeConfig } from "./src/engine.ts";
 import { StateStore } from "./src/state.ts";
 import { SingleInstanceLock } from "./src/lock.ts";
+import { relaxNetworkFamilyTimeout } from "./src/network.ts";
 
 function loadEnv(): Record<string, string> {
   const envPath = join(process.cwd(), ".env");
@@ -42,6 +43,7 @@ Options:
   --user <id>               Allowed Telegram User ID (or ALLOWED_USER_ID)
   --backend <orca|tmux|cmux> Terminal backend (default: orca)
   --target <id>             Specific target pane / handle (optional)
+  --orca-bin <path>         Orca CLI binary (default: orca, or orca-ide on Linux/WSL)
 
 Environment variables (.env file in working directory also supported):
   TELEGRAM_BOT_TOKEN        Bot token from @BotFather
@@ -49,6 +51,8 @@ Environment variables (.env file in working directory also supported):
   ALLOWED_USER_ID           Your Telegram user id
   TERMINAL_BACKEND          orca | tmux | cmux (default: orca)
   TARGET_ID                 Target handle or pane id
+  ORCA_BIN                  Orca CLI binary (auto-detected: orca or orca-ide)
+  NETWORK_FAMILY_TIMEOUT_MS Node only: per-attempt IPv6/IPv4 timeout (default 1000)
 `);
 }
 
@@ -59,6 +63,7 @@ function parseCliArgs(): {
   user?: string;
   backend?: "orca" | "tmux" | "cmux";
   target?: string;
+  orcaBin?: string;
 } {
   const args = process.argv.slice(2);
   let command = "start";
@@ -102,12 +107,19 @@ function parseCliArgs(): {
     user: parsed.user,
     backend,
     target: parsed.target,
+    orcaBin: parsed["orca-bin"],
   };
 }
+
+let lock: SingleInstanceLock | null = null;
 
 async function main(): Promise<void> {
   const cli = parseCliArgs();
   const env = loadEnv();
+
+  relaxNetworkFamilyTimeout({ ...env, ...process.env });
+  const orcaBin = cli.orcaBin || process.env.ORCA_BIN || env.ORCA_BIN;
+  if (orcaBin) process.env.ORCA_BIN = orcaBin;
 
   const botToken = cli.token || process.env.TELEGRAM_BOT_TOKEN || env.TELEGRAM_BOT_TOKEN;
   const allowedChatIdRaw = cli.chat || process.env.ALLOWED_CHAT_ID || env.ALLOWED_CHAT_ID;
@@ -126,9 +138,10 @@ async function main(): Promise<void> {
 
   if (cli.command === "status") {
     const lockFile = join(process.cwd(), ".bridge.lock");
-    const isRunning = existsSync(lockFile);
+    const isRunning = SingleInstanceLock.isHeld(lockFile);
+    const stale = !isRunning && existsSync(lockFile);
     console.log(`Telegram Agent Relay Status:`);
-    console.log(`- Running locally: ${isRunning ? "Yes (lock present)" : "No"}`);
+    console.log(`- Running locally: ${isRunning ? "Yes" : stale ? "No (stale lock from a crashed run)" : "No"}`);
     console.log(`- Backend: ${terminalBackend}`);
     console.log(`- Configured chat: ${allowedChatIdRaw || "None"}`);
     return;
@@ -149,15 +162,16 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const lock = new SingleInstanceLock(join(process.cwd(), ".bridge.lock"));
+  lock = new SingleInstanceLock(join(process.cwd(), ".bridge.lock"));
   if (!lock.acquire()) {
+    lock = null;
     console.error("❌ Another instance of telegram-agent-relay is already running in this directory!");
     process.exit(1);
   }
 
   const cleanup = () => {
     console.log("\n🛑 Shutting down Telegram Agent Relay Bridge...");
-    lock.release();
+    lock?.release();
     process.exit(0);
   };
 
@@ -182,5 +196,6 @@ async function main(): Promise<void> {
 main().catch((err: unknown) => {
   const msg = err instanceof Error ? err.message : String(err);
   console.error("💥 Fatal error:", msg);
+  lock?.release();
   process.exit(1);
 });

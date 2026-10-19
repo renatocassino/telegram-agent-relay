@@ -8,7 +8,11 @@ export interface BridgeState {
 }
 
 export class StateStore {
-  constructor(private filePath: string) {}
+  private filePath: string;
+
+  constructor(filePath: string) {
+    this.filePath = filePath;
+  }
 
   read(): BridgeState {
     if (!existsSync(this.filePath)) {

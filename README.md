@@ -9,7 +9,7 @@ Telegram Agent Relay receives prompts via long polling, dispatches them to your 
 ## ⚡ Quick Start
 
 ### 1. Prerequisites
-- [Bun](https://bun.sh) runtime (`bun --version`)
+- [Bun](https://bun.sh) **or** [Node.js](https://nodejs.org) 22.18+ (`bun --version` / `node --version`)
 - A terminal multiplexer or agent runner: [Orca](https://useorca.com), `tmux`, or `cmux`
 - A Telegram bot and your Telegram numeric user ID
 
@@ -69,6 +69,12 @@ telegram-agent-relay
 bun run start
 ```
 
+#### Option D: From source with Node (no Bun)
+Node 22.18+ runs the TypeScript sources directly (built-in type stripping), no build step and no flags:
+```bash
+npm run start:node    # same as: node index.ts
+```
+
 #### CLI Options Reference
 ```bash
 telegram-agent-relay [options]
@@ -78,9 +84,33 @@ telegram-agent-relay [options]
   --user <id>               Allowed Telegram User ID (or ALLOWED_USER_ID)
   --backend <orca|tmux|cmux> Terminal multiplexer (default: orca)
   --target <id>             Specific target window/pane handle (optional)
+  --orca-bin <path>         Orca CLI binary (default: auto-detect `orca` or `orca-ide`)
   --help, -h                Show help
   --version, -v             Show version
 ```
+---
+
+## 🐧 Linux & WSL Notes
+
+Things that needed care to run on Linux and WSL (all handled automatically now):
+
+| Problem | What the relay does |
+|---|---|
+| Orca's CLI is `orca` on macOS but `orca-ide` on Linux/WSL | Auto-detects whichever is on `PATH`. Override with `ORCA_BIN` or `--orca-bin`. |
+| On WSL, Node's `fetch` fails with `ETIMEDOUT` against `api.telegram.org` | Node tries IPv6 and IPv4 in parallel and gives each attempt only 250 ms; WSL has no IPv6 route and the IPv4 handshake takes longer. The relay raises the per-attempt timeout to 1 s on Node (IPv6 still works where it exists). Tune with `NETWORK_FAMILY_TIMEOUT_MS`. Bun is not affected. |
+| Bun can be unstable on some WSL setups | Run on Node instead (Option D above). |
+| A crash left `.bridge.lock` behind and `status` kept saying "running" | The lock is released on fatal errors, and `status` checks that the PID in the lock is alive (reports stale locks). |
+
+**Pin the target terminal.** Without `TARGET_ID`, the Orca backend picks a terminal titled `telegram`, `coordinator` or `omp`, and otherwise the *first* terminal Orca lists. That order changes as tabs open and close, so with several agent tabs open set `TARGET_ID` (see `/targets` or `orca-ide terminal list --json`) to make sure your messages reach the right session.
+
+**Run in the background on WSL** (no launchd/systemd needed):
+```bash
+cd ~/projects/telegram-agent-relay
+setsid nohup node index.ts > bridge.log 2> bridge.err.log < /dev/null &
+node index.ts status          # Running locally: Yes
+kill "$(cat .bridge.lock)"    # stop (the lock is removed on shutdown)
+```
+
 ---
 
 ## 🎮 Telegram In-Chat Commands
@@ -172,6 +202,13 @@ Run test suite:
 
 ```bash
 bun test
+```
+
+Type check without Bun:
+
+```bash
+npm install --no-package-lock --legacy-peer-deps
+npx -p typescript@5 tsc --noEmit -p .
 ```
 
 ## 📄 License
