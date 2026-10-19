@@ -2,8 +2,24 @@ import { openSync, closeSync, unlinkSync, existsSync, readFileSync, writeFileSyn
 
 export class SingleInstanceLock {
   private lockFd: number | null = null;
+  private lockFilePath: string;
 
-  constructor(private lockFilePath: string) {}
+  constructor(lockFilePath: string) {
+    this.lockFilePath = lockFilePath;
+  }
+
+  /** True when the lock file names a process that is still alive (a stale file left by a crash is not held). */
+  static isHeld(lockFilePath: string): boolean {
+    if (!existsSync(lockFilePath)) return false;
+    const pid = parseInt(readFileSync(lockFilePath, "utf-8").trim(), 10);
+    if (isNaN(pid)) return false;
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
   acquire(): boolean {
     if (existsSync(this.lockFilePath)) {

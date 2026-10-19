@@ -1,4 +1,6 @@
 import { exec } from "child_process";
+import { existsSync } from "fs";
+import { delimiter, join } from "path";
 import { promisify } from "util";
 
 const execAsync = promisify(exec);
@@ -36,8 +38,25 @@ export interface OrcaTaskInfo {
   result?: string | null;
 }
 
+/**
+ * Orca's CLI is installed as `orca` on macOS and as `orca-ide` on Linux/WSL.
+ * ORCA_BIN (or --orca-bin) wins; otherwise the first of the two found on PATH.
+ */
+export function resolveOrcaBin(env: NodeJS.ProcessEnv = process.env): string {
+  if (env.ORCA_BIN) return env.ORCA_BIN;
+  const dirs = (env.PATH || "").split(delimiter).filter(Boolean);
+  for (const name of ["orca", "orca-ide"]) {
+    if (dirs.some((dir) => existsSync(join(dir, name)))) return name;
+  }
+  return "orca";
+}
+
 export class OrcaCLI {
-  constructor(private binPath: string = "orca") {}
+  private binPath: string;
+
+  constructor(binPath: string = resolveOrcaBin()) {
+    this.binPath = binPath;
+  }
 
   async listTerminals(): Promise<OrcaTerminalInfo[]> {
     try {
